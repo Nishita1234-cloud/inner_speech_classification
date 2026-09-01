@@ -82,8 +82,8 @@ for sub_dir in sorted(DERIV_ROOT.glob("sub-*")):
     
 print(f"\nLoaded {len(X_by_subject)} subjects")
 
-
-#Per subject zscore normalization
+'''
+#used for cross subject validation- not done in final version
 def normalize_per_subject(X):
     mean = X.mean(axis=(0, 2), keepdims=True)
     std = X.std(axis=(0, 2), keepdims=True)
@@ -92,6 +92,7 @@ def normalize_per_subject(X):
 for sub_id in X_by_subject:
     X_by_subject[sub_id] = normalize_per_subject(X_by_subject[sub_id])
     print(f"  {sub_id}: normalized (per-channel mean~0, std~1)")
+ '''
 
 N_TIMES = next(iter(X_by_subject.values())).shape[-1]   # same for every subject (same crop + resample), used by EEGNet's n_times
 print(f"\nTimesteps per trial: {N_TIMES}")
