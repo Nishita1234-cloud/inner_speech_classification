@@ -78,7 +78,8 @@ for sub_dir in sorted(DERIV_ROOT.glob("sub-*")):
     print(f"  {sub_dir.name}: {X.shape[0]} trials total")
 print(f"\nLoaded {len(X_by_subject)} subjects")
 
-#Per-subject normalization (normalized because data was across 3 sessions)
+'''
+#used for cross subject validation- not done in final version
 def normalize_per_subject(X):
     mean = X.mean(axis=(0, 2), keepdims=True)
     std = X.std(axis=(0, 2), keepdims=True)
@@ -87,7 +88,8 @@ def normalize_per_subject(X):
 for sub_id in X_by_subject:
     X_by_subject[sub_id] = normalize_per_subject(X_by_subject[sub_id])
     print(f"  {sub_id}: normalized (per-channel mean~0, std~1)")
-    
+ '''
+
 #Model
 class CNNLSTM(nn.Module):
     def __init__(self, n_channels=128, F1=8, D=2, kernel_len=87,
