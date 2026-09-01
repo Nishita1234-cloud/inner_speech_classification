@@ -18,8 +18,7 @@ My goal for this project was to compare deep learning methods (CNN-BiLSTM and EE
 - 256 Hz sampling rate (confirmed after preprocessing)
 - 128 EEG channels
 - 2.5 seconds of the action interval kept per epoch
-- Since each subject's data spans 3 recording sessions, each subject's EEG data was z-score standardized (per channel, across that subject's own trials) to account for scale differences across sessions
-
+  
 ### Models
 
 - **CNN-BiLSTM** (the CNN portion is similar to EEGNet)
