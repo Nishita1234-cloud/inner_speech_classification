@@ -94,11 +94,14 @@ Setup: 20 repeated random 80/10/10 splits per subject, 4-class balanced accuracy
 To check what each deep model actually learned, the spatial filter weights of a representative model (sub-01, seed 0) were plotted back onto the scalp.
 
 <p float="left">
-  <img src="images/cnn_lstm_topomap_sub01.png" width="45%" alt="CNN-LSTM mean absolute spatial weight across all filters for sub-01, seed 0, showing a peak near left temporal electrodes" />
-  <img src="images/eegnet_topomap_sub01.png" width="45%" alt="EEGNet mean absolute spatial weight across all filters for sub-01, seed 0, showing weight spread fairly evenly across the scalp" />
+  <img src="cnn_lstm_topoMap.png" width="45%" alt="CNN-LSTM mean absolute spatial weight across all filters for sub-01, seed 0, showing a peak near left temporal electrodes" />
+  <img src="eegNet_topoMap.png" width="45%" alt="EEGNet mean absolute spatial weight across all filters for sub-01, seed 0, showing weight spread fairly evenly across the scalp" />
 </p>
 
 *Left: CNN-LSTM. Right: EEGNet. Both show the mean absolute spatial filter weight per electrode, averaged across all filters, viewed from above with the nose pointing up.*
+
+![CNNLSTM Per Subject Accuracy](cnn_lstm_boxplot.png)
+![EEGNet Per Subject Accuracy](eegNet_boxplot.png)
 
 ### Classical ML (SVM)
 
@@ -123,7 +126,7 @@ D12, D13, D14, D18, D19, D20, D21, D22, D23, D24, D25, D29, D30, D31, D32
 
 </details>
 
-![ROI sanity check](images/roi_sanity_check.png)
+![ROI sanity check](roi_sanity_check.png)
 
 **Feature set** (45 total: 11 feature types × 4 regions, plus 1 cross-region connectivity feature)
 
@@ -176,10 +179,9 @@ Setup: 20 repeated random 80/10/10 splits per subject, 4-class balanced accuracy
 | Derecha (Right) | 0.259 ± 0.186 |
 | Izquierda (Left) | 0.219 ± 0.179 |
 
-![SVM feature importance by coefficient magnitude](images/svm_coefficient_importance.png)
-![SVM feature importance by permutation](images/svm_permutation_importance.png)
-![SVM feature importance mapped to scalp](images/svm_importance_topomap.png)
-![SVM learning curve](images/svm_learning_curve.png)
+![SVM Per Subject Accuracy](sum_per_subject_accuracy_boxplot.png)
+![SVM feature importance by coefficient magnitude](svm_coefficient_importance.png)
+![SVM feature importance mapped to scalp](svm_importance_topomap.png)
 
 ## Discussion
 
