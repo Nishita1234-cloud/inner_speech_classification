@@ -40,8 +40,8 @@ for ch in sorted(mapping, key=biosemi_sort_key):
     print(f"{ch:<8} {name:<10} {dist:.4f}")
 
 #anatomical features to focus on
-FRONTO_TEMPORAL_PREFIXES = ("FT",)
-OCC_PARIETAL_PREFIXES = ("PO", "O", "P")
+PREFIXES = ("FC", "FT", "T", "P", "TP", "CP")
+
 
 def matches_prefix(name, prefixes):
     for p in sorted(prefixes, key=len, reverse=True):
@@ -49,17 +49,13 @@ def matches_prefix(name, prefixes):
             return True
     return False
 
-ft_channels = sorted(
-    [ch for ch, (name, _) in mapping.items() if matches_prefix(name, FRONTO_TEMPORAL_PREFIXES)],
-    key=biosemi_sort_key,
-)
-op_channels = sorted(
-    [ch for ch, (name, _) in mapping.items() if matches_prefix(name, OCC_PARIETAL_PREFIXES)],
+region_channels = sorted(
+    [ch for ch, (name, _) in mapping.items() if matches_prefix(name, PREFIXES)],
     key=biosemi_sort_key,
 )
 
-print(f"\nFronto-temporal BioSemi channels ({len(ft_channels)}): {ft_channels}")
-print(f"\nOccipital-parietal BioSemi channels ({len(op_channels)}): {op_channels}")
+
+print(f"\nRegion BioSemi channels ({len(region_channels)}): {region_channels}")
 
 #flag any large distances
 DIST_WARN_THRESHOLD = 0.015  # meters; adjust if everything looks fine but this is noisy
