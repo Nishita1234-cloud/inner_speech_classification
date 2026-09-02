@@ -40,7 +40,10 @@ for ch in sorted(mapping, key=biosemi_sort_key):
     print(f"{ch:<8} {name:<10} {dist:.4f}")
 
 #anatomical features to focus on
-PREFIXES = ("FC", "FT", "T", "P", "TP", "CP")
+inferior_forntal = ("FFT", "FT", "F7", "F8", "AF7", "AF8")
+premotor = ("FC", "Fz")
+temporal = ("T", "TP")
+parietal = ("P", "CP")
 
 
 def matches_prefix(name, prefixes):
@@ -49,13 +52,30 @@ def matches_prefix(name, prefixes):
             return True
     return False
 
-region_channels = sorted(
-    [ch for ch, (name, _) in mapping.items() if matches_prefix(name, PREFIXES)],
+inferior_forntal_channels = sorted(
+    [ch for ch, (name, _) in mapping.items() if matches_prefix(name, inferior_forntal)],
     key=biosemi_sort_key,
 )
 
+premotor_channels = sorted(
+    [ch for ch, (name, _) in mapping.items() if matches_prefix(name, premotor)],
+    key=biosemi_sort_key,
+)
 
-print(f"\nRegion BioSemi channels ({len(region_channels)}): {region_channels}")
+temporal_channels = sorted(
+    [ch for ch, (name, _) in mapping.items() if matches_prefix(name, temporal)],
+    key=biosemi_sort_key,
+)
+
+parietal_channels = sorted(
+    [ch for ch, (name, _) in mapping.items() if matches_prefix(name, parietal)],
+    key=biosemi_sort_key,
+)
+
+print(f"\nInferior Frontal BioSemi channels ({len(inferior_forntal_channels)}): {inferior_forntal_channels}")
+print(f"\npremotor BioSemi channels ({len(premotor_channels)}): {premotor_channels}")
+print(f"\ntemporal BioSemi channels ({len(temporal_channels)}): {temporal_channels}")
+print(f"\nparietal BioSemi channels ({len(parietal_channels)}): {parietal_channels}")
 
 #flag any large distances
 DIST_WARN_THRESHOLD = 0.015  # meters; adjust if everything looks fine but this is noisy
