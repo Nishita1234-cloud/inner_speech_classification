@@ -1,11 +1,8 @@
-# inner_speech_deep_learning_classification
-classifying directional words (right/left/up/down- in Spanish) from neural signals using deep learning
-
-# Comparison of Inner Speech Classification with Deep Learning Methods
+# Comparison of Inner Speech Classification with Deep Learning and Classical ML Methods
 
 ## Goal
 
-My goal for this project was to compare deep learning methods (CNN-BiLSTM and EEGNet) on inner speech classification of four directional words (right/left/up/down, in Spanish). The main reason I did this project was to gain a better technical understanding of a section of BCIs that focus on decoding neural signals into words, which can aid people who do not have the ability to speak to still be able to communicate with their peers and loved ones.
+My goal for this project was to compare deep learning methods (CNN-BiLSTM and EEGNet) against a classical ML method (SVM) on inner speech classification of four directional words (right/left/up/down, in Spanish). The main reason I did this project was to gain a better technical understanding of a section of BCIs that focus on decoding neural signals into words, which can aid people who do not have the ability to speak to still be able to communicate with their peers and loved ones.
 
 ## Methods
 
@@ -18,15 +15,18 @@ My goal for this project was to compare deep learning methods (CNN-BiLSTM and EE
 - 256 Hz sampling rate (confirmed after preprocessing)
 - 128 EEG channels
 - 2.5 seconds of the action interval kept per epoch
-  
+- Since each subject's data spans 3 recording sessions, each subject's EEG data was z-score standardized (per channel, across that subject's own trials) to account for scale differences across sessions
+
 ### Models
 
-- **CNN-BiLSTM** (the CNN portion is similar to EEGNet)
-  - Temporal and spatial convolutional layers to learn spatiotemporal patterns
-  - Bidirectional LSTM layer to learn temporal dependencies across the trial
-  - fed into a final dense + softmax classification layer
-- **EEGNet**
-  - Implemented via `braindecode.models.EEGNet`
+- **CNN-BiLSTM** — a custom architecture combining CNN (similar to EEGNet CNN layers) and RNN layers:
+  - Temporal convolution ( kernel spanning 87 timesteps) to learn frequency/temporal filters, followed by batch normalization
+  - Depthwise spatial convolution (spanning all 128 channels) to learn per-filter spatial patterns across electrodes, followed by batch normalization and an ELU activation
+  - Average pooling + dropout to reduce the temporal resolution before the recurrent stage
+  - A bidirectional LSTM layer (hidden size 16) to learn temporal dependencies across the trial in both directions, with its output mean-pooled over time
+  - A final dropout + linear layer to classify into the 4 direction classes
+- **EEGNet** — implemented via `braindecode.models.EEGNet`, (matched kernel length and filter counts from CNN-BiLSTM for a fair comparison), but without an added recurrent stage — EEGNet instead relies on its own separable convolutions and pooling to build the final representation before classification
+- **SVM** — a linear SVM with class balance. Features were extracted from 4 anatomically-informed regions of interest (see the Results section below for the region list and full feature table) rather than learned end-to-end from the full 128-channel signal
 
 ### Evaluation
 
@@ -35,59 +35,63 @@ My goal for this project was to compare deep learning methods (CNN-BiLSTM and EE
 
 ## Results
 
-Both models showed slight overfitting to their training data.
+All three models landed close to chance-level accuracy, with evidence of overfitting.
 
 ### EEGNet — Within-Subject Results
 
-Setup: 641 timesteps per trial, 20 repeated random 80/10/10 splits per subject, 4-class balanced accuracy (chance = 0.250)
+Setup: 20 repeated random 80/10/10 splits per subject, 4-class balanced accuracy (chance = 0.250)
 
-| Subject | Trials | Seeds | Mean ± Std | Min | Max |
-|---|---|---|---|---|---|
-| sub-01 | 200 | 20 | 0.255 ± 0.089 | 0.100 | 0.450 |
-| sub-02 | 240 | 20 | 0.250 ± 0.068 | 0.125 | 0.375 |
-| sub-03 | 180 | 20 | 0.251 ± 0.119 | 0.062 | 0.537 |
-| sub-04 | 240 | 20 | 0.219 ± 0.083 | 0.042 | 0.333 |
-| sub-05 | 240 | 20 | 0.312 ± 0.094 | 0.125 | 0.500 |
-| sub-06 | 216 | 20 | 0.281 ± 0.096 | 0.125 | 0.500 |
-| sub-07 | 240 | 20 | 0.279 ± 0.076 | 0.083 | 0.417 |
-| sub-08 | 200 | 20 | 0.253 ± 0.112 | 0.100 | 0.450 |
-| sub-09 | 160 | 20 | 0.247 ± 0.087 | 0.062 | 0.438 |
-| sub-10 | 160 | 20 | 0.275 ± 0.105 | 0.062 | 0.438 |
+| Subject | Mean ± Std (across 20 seeds) |
+|---|---|
+| sub-01 | 0.265 ± 0.091 |
+| sub-02 | 0.248 ± 0.072 |
+| sub-03 | 0.244 ± 0.096 |
+| sub-04 | 0.250 ± 0.080 |
+| sub-05 | 0.319 ± 0.093 |
+| sub-06 | 0.285 ± 0.091 |
+| sub-07 | 0.279 ± 0.090 |
+| sub-08 | 0.270 ± 0.131 |
+| sub-09 | 0.231 ± 0.086 |
+| sub-10 | 0.281 ± 0.083 |
 
 **Aggregate**
 
 | Aggregation method | Balanced accuracy |
 |---|---|
-| Mean of per-subject means | 0.262 ± 0.024 |
-| Pooled across all 200 subject-seed runs | 0.262 ± 0.097 |
+| Mean of per-subject means | 0.267 ± 0.024 |
+| Pooled across all 200 subject-seed runs | 0.267 ± 0.096 |
+| Average within-subject std across seeds | 0.091 (how much a single split's number moves around) |
+
+![EEGNet per-subject accuracy box plot](images/eegnet_per_subject_accuracy_boxplot.png)
 
 ### CNN-LSTM — Within-Subject Results
 
-Setup: 641 timesteps per trial, 20 repeated random 80/10/10 splits per subject, 4-class balanced accuracy (chance = 0.250)
+Setup: 20 repeated random 80/10/10 splits per subject, 4-class balanced accuracy (chance = 0.250)
 
-| Subject | Trials | Seeds | Mean ± Std | Min | Max |
-|---|---|---|---|---|---|
-| sub-01 | 200 | 20 | 0.283 ± 0.083 | 0.150 | 0.500 |
-| sub-02 | 240 | 20 | 0.308 ± 0.084 | 0.167 | 0.500 |
-| sub-03 | 180 | 20 | 0.251 ± 0.095 | 0.000 | 0.425 |
-| sub-04 | 240 | 20 | 0.229 ± 0.079 | 0.125 | 0.417 |
-| sub-05 | 240 | 20 | 0.219 ± 0.076 | 0.125 | 0.375 |
-| sub-06 | 216 | 20 | 0.290 ± 0.065 | 0.150 | 0.400 |
-| sub-07 | 240 | 20 | 0.233 ± 0.078 | 0.083 | 0.375 |
-| sub-08 | 200 | 20 | 0.283 ± 0.104 | 0.150 | 0.500 |
-| sub-09 | 160 | 20 | 0.291 ± 0.072 | 0.188 | 0.438 |
-| sub-10 | 160 | 20 | 0.259 ± 0.101 | 0.062 | 0.438 |
+| Subject | Mean ± Std (across 20 seeds) |
+|---|---|
+| sub-01 | 0.265 ± 0.087 |
+| sub-02 | 0.283 ± 0.075 |
+| sub-03 | 0.294 ± 0.114 |
+| sub-04 | 0.235 ± 0.074 |
+| sub-05 | 0.215 ± 0.075 |
+| sub-06 | 0.288 ± 0.083 |
+| sub-07 | 0.235 ± 0.066 |
+| sub-08 | 0.283 ± 0.083 |
+| sub-09 | 0.272 ± 0.080 |
+| sub-10 | 0.247 ± 0.098 |
 
 **Aggregate**
 
 | Aggregation method | Balanced accuracy |
 |---|---|
-| Mean of per-subject means | 0.265 ± 0.029 |
-| Pooled across all 200 subject-seed runs | 0.265 ± 0.089 |
+| Mean of per-subject means | 0.262 ± 0.026 |
+| Pooled across all 200 subject-seed runs | 0.262 ± 0.088 |
+| Average within-subject std across seeds | 0.083 (how much a single split's number moves around) |
 
 ### Spatial filter interpretability
 
-To check what each model actually learned, the spatial filter weights of a representative model (sub-01, seed 0) were plotted back onto the scalp.
+To check what each deep model actually learned, the spatial filter weights of a representative model (sub-01, seed 0) were plotted back onto the scalp.
 
 <p float="left">
   <img src="images/cnn_lstm_topomap_sub01.png" width="45%" alt="CNN-LSTM mean absolute spatial weight across all filters for sub-01, seed 0, showing a peak near left temporal electrodes" />
@@ -96,18 +100,100 @@ To check what each model actually learned, the spatial filter weights of a repre
 
 *Left: CNN-LSTM. Right: EEGNet. Both show the mean absolute spatial filter weight per electrode, averaged across all filters, viewed from above with the nose pointing up.*
 
+### Classical ML (SVM)
+
+Instead of learning spatial/temporal filters end-to-end, the SVM used hand-crafted features extracted from 4 regions of interest, chosen for their hypothesized role in inner speech:
+
+| Region (abbr.) | Function |
+|---|---|
+| Inferior Frontal (IF) | Language generation and phonetic structure (Broca's-area-adjacent) |
+| Premotor / SMA (PM) | Internal speech planning and covert articulatory representations |
+| Temporal (TMP) | Language and phonological representations |
+| Parietal (PAR) | Higher-level language / phonological processing |
+
+<details>
+<summary>Full channel list (all 4 ROIs combined, BioSemi 128-channel names)</summary>
+
+```
+A1, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14, A15, A16, A17, A18, A19, A20, A21,
+A26, A27, A28, A29, A30, A31, A32, B3, B4, B5, B6, B7, B8, B9, B10, B11, B12, B13, B14, B15,
+B20, B21, B22, B23, B24, B25, B26, B28, B29, B30, B31, B32, C1, C2, C23, D1, D2, D9, D10, D11,
+D12, D13, D14, D18, D19, D20, D21, D22, D23, D24, D25, D29, D30, D31, D32
+```
+
+</details>
+
+![ROI sanity check](images/roi_sanity_check.png)
+
+**Feature set** (45 total: 11 feature types × 4 regions, plus 1 cross-region connectivity feature)
+
+| Feature | Regions | Meaning |
+|---|---|---|
+| Theta power (log) | IF, PM, TMP, PAR | Log-transformed theta-band (4–8 Hz) power averaged across the region's channels. |
+| Alpha power (log) | IF, PM, TMP, PAR | Log-transformed alpha-band (8–12 Hz) power averaged across the region's channels. |
+| Beta power (log) | IF, PM, TMP, PAR | Log-transformed beta-band (12–30 Hz) power averaged across the region's channels. |
+| Theta rel power | IF, PM, TMP, PAR | Theta power as a fraction of that region's total theta+alpha+beta power. |
+| Alpha rel power | IF, PM, TMP, PAR | Alpha power as a fraction of that region's total theta+alpha+beta power. |
+| Beta rel power | IF, PM, TMP, PAR | Beta power as a fraction of that region's total theta+alpha+beta power. |
+| Alpha lateralization | IF, PM, TMP, PAR | Right-vs-left hemisphere imbalance in alpha power within that region. |
+| Beta lateralization | IF, PM, TMP, PAR | Right-vs-left hemisphere imbalance in beta power within that region. |
+| Hjorth activity | IF, PM, TMP, PAR | Signal variance of that region's raw time-domain waveform. |
+| Hjorth mobility | IF, PM, TMP, PAR | Mean frequency (rate of change) of that region's raw waveform. |
+| Hjorth complexity | IF, PM, TMP, PAR | How much the waveform's frequency content itself changes over the trial. |
+| Connectivity (Pearson r) | IF ↔ TMP | Trial-by-trial correlation between the Inferior Frontal and Temporal regions' averaged waveforms. |
+
+**Within-subject results**
+
+Setup: 20 repeated random 80/10/10 splits per subject, 4-class balanced accuracy (chance = 0.250)
+
+| Subject | Mean ± Std (across 20 seeds) |
+|---|---|
+| sub-01 | 0.247 ± 0.107 |
+| sub-02 | 0.277 ± 0.102 |
+| sub-03 | 0.261 ± 0.105 |
+| sub-04 | 0.194 ± 0.092 |
+| sub-05 | 0.267 ± 0.096 |
+| sub-06 | 0.230 ± 0.086 |
+| sub-07 | 0.281 ± 0.104 |
+| sub-08 | 0.277 ± 0.099 |
+| sub-09 | 0.275 ± 0.089 |
+| sub-10 | 0.237 ± 0.083 |
+
+**Aggregate**
+
+| Aggregation method | Balanced accuracy |
+|---|---|
+| Mean of per-subject means | 0.255 ± 0.026 |
+| Pooled across all 200 subject-seed runs | 0.255 ± 0.100 |
+| Macro-F1 (mean of per-subject means) | 0.242 ± 0.026 |
+
+**Per-class F1** (mean ± std, pooled across all subject-seed runs)
+
+| Class | F1 |
+|---|---|
+| Arriba (Up) | 0.260 ± 0.172 |
+| Abajo (Down) | 0.232 ± 0.176 |
+| Derecha (Right) | 0.259 ± 0.186 |
+| Izquierda (Left) | 0.219 ± 0.179 |
+
+![SVM feature importance by coefficient magnitude](images/svm_coefficient_importance.png)
+![SVM feature importance by permutation](images/svm_permutation_importance.png)
+![SVM feature importance mapped to scalp](images/svm_importance_topomap.png)
+![SVM learning curve](images/svm_learning_curve.png)
+
 ## Discussion
 
-- Given that this project only used inner speech data (~220 trials per subject), the reduced amount of data available for the models to learn from is likely the main reason behind the overfitting, since both EEGNet and CNN-BiLSTM showed similar overfitting and end results
-- Overall, these models achieved close-to-chance accuracy, which most likely means the models were probably guessing randomly (1/4 chance of getting it right)
-- Deep learning models need a lot of annotated data to learn patterns properly, so given this dataset's size, building a model to learn features important for imagined speech of directional commands may not have been the best-suited approach
-- However, the CNN-LSTM's spatial filters did concentrate weight on a specific region, most strongly on left temporal electrodes near the ear, suggesting the model settled on a consistent electrode subset rather than spreading attention randomly
-- EEGNet's spatial weights were far more uniformly distributed across the scalp, with no single electrode region standing out to the same degree, so the two architectures do not appear to converge on the same features
-- The left temporal region CNN-LSTM emphasized sits close to areas classically tied to language processing (Wernicke's area), though it also sits close to jaw muscles, so residual subvocal movement is also a possible explanation. 
+- This project only used inner speech trials (~220 per subject), which likely limited how much all three models could learn. EEGNet and CNN-BiLSTM both showed similar overfitting and landed at similar final accuracy, and the SVM's learning curve showed the same pattern (high training score, chance-level cross-validated test score)
+- All three models landed at close-to-chance accuracy, which most likely means they were largely guessing rather than learning a reliable direction-specific signal
+- Deep learning models in particular need a lot of annotated data to learn patterns properly, so given this dataset's size, building a model to learn features important for imagined speech of directional commands may not have been the best-suited approach on its own
+- Directional-command classification is a more complex signal than simple binary decisions, possibly drawing on occipital, parietal, and fronto-temporal regions together. And with this little data, it's hard to separate the difference from an absence of signal to a lack of trials to show signal is present. Both classical ML and deep learning landed at a similar "by-chance" accuracy here, which is itself informative because most prior work on this dataset trains on all three task conditions (imagined speech of commands, visualization of commands, and pronunciation of commands)  together rather than inner speech alone
+- Comparing EEGNet and CNN-BiLSTM's learned spatial filters for a given seed showed very different activation patterns between the two architectures, and neither concentrated strongly on the regions most relevant to this task (fronto-temporal or parietal) — see the topomap comparison above
+- The SVM's feature-importance results (coefficient magnitude and permutation importance) pointed to the Inferior Frontal and Temporal regions. Both regions are tied to language processing as the most informative, which lines up with what we'd expect neurologically. That said, given the SVM was also overfitting per the learning curve, this result should not be seen as confirmed evidence
+- Other papers working with this dataset have used all three inner speech tasks (pronounced, visualized, and imagined speech) together for classification, which gives them substantially more training data. Restricting this project to inner speech alone was a deliberate scope choice to keep things manageable, but it likely cost real performance. Pronounced and visualized speech carry related information about how people process these command words that imagined speech alone doesn't capture.
+- Since the idea of inner speech in general can be a combination of phonetically thinking about the word, thinking about the word's meaning, imagining what that word is (action or object) with each thought and process depending on the subject, the results of this project indicate that inner speech might not be only relative to imagining how to say that word
 
 ## Future Direction
 
-- As a future step, I want to  try a Random Forest classifier restricted to features from specific, hypothesis-driven channel regions instead of the full 128-channels
-- Spatial thinking is primarily associated with occipital and parietal regions, since the four classes here are spatial direction words, so band power, ERP, and nonlinear features computed only on occipital-parietal channels could carry more class-relevant signal per feature than the whole-scalp approach used so far
-- Separately, general inner speech processing (auditory, semantic, and motor planning and articulation) recruits areas closer to premotor cortex and Broca's and Wernicke's areas, so features from fronto-temporal channels could still be worth including, though these regions will probably give information on whether inner speech is happening at all rather than which direction was chosen
-- Narrowing features to these regions manually could reduce the feature-to-trial ratio problem that likely contributed to overfitting in the deep models, given the limited ~220 trials per subject
+- **Sliding window segmentation** — The current analysis treats each 2.5-s trial as a single observation. Segmenting each trial into overlapping temporal windows could allow the models to capture transient neural dynamics and provide more training segments, potentially improving feature learning. However, because windows from the same trial are not independent observations, all windows from a given trial must remain within the same train/validation/test partition to prevent data leakage.
+- **Use all three task conditions** — Following what most prior work on this dataset does, incorporating pronounced and visualized speech (as additional training data, or via multi-task/transfer learning into the inner-speech model) rather than treating inner speech in isolation
+-**Replicate other studies in using GNNs or Transformers on the full dataset** — I want to try replicating what other studies have done with GNNs and Transformers on the full dataset (all three tasks), partly to make sure I didn't make a mistake somewhere in my own pipeline before getting to this point (if I can't get close to what they got, that tells me something upstream is probably off), but also because I actually understand why these methods could do better here. For example, a GNN can learn the connectivity between regions, meaning the model picks up on which regions are communicating with each other during a specific event, which could help classification more than looking at each region on its own. A Transformer could do something similar through attention, without needing to define a fixed graph up front.
