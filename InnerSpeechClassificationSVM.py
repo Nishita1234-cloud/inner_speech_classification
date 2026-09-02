@@ -9,6 +9,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import LinearSVC
 from sklearn.metrics import balanced_accuracy_score, f1_score, confusion_matrix
 from sklearn.inspection import permutation_importance
+from sklearn.model_selection import learning_curve, StratifiedKFold
+from sklearn.pipeline import Pipeline
 from mne.viz import plot_topomap
 import matplotlib.pyplot as plt
 
@@ -38,18 +40,14 @@ def load_subject_data(sub_dir):
             print(f"    SKIP {fpath.name}: {type(e).__name__}: {e}")
             continue
         events_files = list(ses_dir.glob("*_events.dat"))
-
         events_arr = pd.read_pickle(events_files[0])
-
         event_ids = epochs.events[:, 2]
         id_to_name = {v: k for k, v in epochs.event_id.items()}
         y_check = np.array([CLASS_MAP[id_to_name[eid]] for eid in event_ids])
-
         inner_speech_mask = events_arr[:, 2] == 1
         epochs = epochs[inner_speech_mask]
         print(f"    {ses_dir.name}: kept {inner_speech_mask.sum()}/{len(inner_speech_mask)} trials (inner speech only)")
         all_epochs.append(epochs)
-
     if not all_epochs:
         return None, None
     epochs = mne.concatenate_epochs(all_epochs) if len(all_epochs) > 1 else all_epochs[0]
@@ -83,31 +81,10 @@ for sub_dir in sorted(DERIV_ROOT.glob("sub-*")):
         REFERENCE_EPOCHS = epochs
 print(f"Loaded {len(X_by_subject)} subjects")
 
-
 ORIGINAL_CH_NAMES = REFERENCE_EPOCHS.ch_names
 montage = mne.channels.make_standard_montage("biosemi128")
 pos_dict = montage.get_positions()["ch_pos"]
-name_to_idx = {ch: i for i, ch in enumerate(ORIGINAL_CH_NAMES)} 
-
-#got from mapping 128 channenls onto 10-05 system
-fronto_temporal = ["B25", "B26", "D22", "D23"]
-occipital_parietal = [
-    "A5", "A8", "A9", "A10", "A11", "A12", "A13", "A14", "A15", "A16", "A17",
-    "A18", "A19", "A20", "A21", "A22", "A23", "A26", "A27", "A28", "A29",
-    "A30", "A31", "A32", "B5", "B6", "B7", "B8", "B9",
-]
-
-# sanity check: make sure every hardcoded name actually exists in this dataset's channels 
-_missing = [ch for ch in fronto_temporal + occipital_parietal if ch not in name_to_idx]
-if _missing:
-    raise ValueError(f"These hardcoded ROI channels aren't in the loaded data: {_missing}")
-
-op_idx = [name_to_idx[ch] for ch in occipital_parietal]
-ft_idx = [name_to_idx[ch] for ch in fronto_temporal]
-op_left_idx = [name_to_idx[ch] for ch in occipital_parietal if pos_dict[ch][0] < 0]
-op_right_idx = [name_to_idx[ch] for ch in occipital_parietal if pos_dict[ch][0] > 0]
-ft_left_idx = [name_to_idx[ch] for ch in fronto_temporal if pos_dict[ch][0] < 0]
-ft_right_idx = [name_to_idx[ch] for ch in fronto_temporal if pos_dict[ch][0] > 0]
+name_to_idx = {ch: i for i, ch in enumerate(ORIGINAL_CH_NAMES)}
 
 standard_pos = mne.channels.make_standard_montage("standard_1005").get_positions()["ch_pos"]
 standard_names = list(standard_pos.keys())
@@ -116,42 +93,56 @@ def _nearest_1005_name(ch):
     dists = np.linalg.norm(standard_coords - np.array(pos_dict[ch]), axis=1)
     return standard_names[np.argmin(dists)]
 
-print(f"\nOccipital-parietal ROI: {len(op_idx)} channels ({len(op_left_idx)} left / {len(op_right_idx)} right)")
-print("  " + ", ".join(f"{ch}({_nearest_1005_name(ch)})" for ch in occipital_parietal))
-print(f"Fronto-temporal ROI: {len(ft_idx)} channels ({len(ft_left_idx)} left / {len(ft_right_idx)} right)")
-print("  " + ", ".join(f"{ch}({_nearest_1005_name(ch)})" for ch in fronto_temporal))
+#got from mapping
+ROI_CHANNELS = {
+    "IF": ['B25', 'B26', 'B27', 'C7', 'C8', 'C30', 'D7', 'D8', 'D22', 'D23'],
+    "PM": ['A1', 'B20', 'B21', 'B22', 'B23', 'B24', 'B28', 'B29', 'B30', 'B31', 'B32',
+           'C1', 'C2', 'C21', 'C23', 'D1', 'D2', 'D9', 'D10', 'D11', 'D12', 'D13', 'D14',
+           'D18', 'D19', 'D20', 'D21'],
+    "TMP": ['B10', 'B11', 'B12', 'B14', 'B15', 'D24', 'D25', 'D30', 'D31', 'D32'],
+    "PAR": ['A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A9', 'A10', 'A11', 'A12', 'A13', 'A14',
+            'A15', 'A16', 'A17', 'A18', 'A19', 'A20', 'A21', 'A26', 'A27', 'A28', 'A29',
+            'A30', 'A31', 'A32', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'B13', 'D29'],
+}
 
-# Sanity-check plot to make sure  ROI selection actually landed in right spot
+_missing = [ch for chans in ROI_CHANNELS.values() for ch in chans if ch not in name_to_idx]
+if _missing:
+    raise ValueError(f"These hardcoded ROI channels aren't in the loaded data: {_missing}")
+
+ROI_IDX = {label: [name_to_idx[ch] for ch in chans] for label, chans in ROI_CHANNELS.items()}
+ROI_LEFT_IDX = {label: [name_to_idx[ch] for ch in chans if pos_dict[ch][0] < 0] for label, chans in ROI_CHANNELS.items()}
+ROI_RIGHT_IDX = {label: [name_to_idx[ch] for ch in chans if pos_dict[ch][0] > 0] for label, chans in ROI_CHANNELS.items()}
+
+for label, chans in ROI_CHANNELS.items():
+    print(f"{label}: {len(chans)} channels ({len(ROI_LEFT_IDX[label])} left / {len(ROI_RIGHT_IDX[label])} right)")
+    print("  " + ", ".join(f"{ch}({_nearest_1005_name(ch)})" for ch in chans))
+
+# Sanity-check plot to make sure ROI selection actually landed in right spot
 SAMPLE_INFO = REFERENCE_EPOCHS.copy().info
 SAMPLE_INFO.set_montage("biosemi128", on_missing="warn")
 
-roi_mask = np.zeros(len(ORIGINAL_CH_NAMES))
-for ch in occipital_parietal:
-    roi_mask[name_to_idx[ch]] = 1.0
-for ch in fronto_temporal:
-    roi_mask[name_to_idx[ch]] = -1.0
+fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+mask_a = np.zeros(len(ORIGINAL_CH_NAMES))
+for ch in ROI_CHANNELS["IF"]: mask_a[name_to_idx[ch]] = 1.0
+for ch in ROI_CHANNELS["TMP"]: mask_a[name_to_idx[ch]] = -1.0
+plot_topomap(mask_a, SAMPLE_INFO, axes=axes[0], show=False, cmap="PiYG", vlim=(-1, 1), sensors=True, contours=0)
+axes[0].set_title("IF (green) vs TMP (pink)")
 
-fig, ax = plt.subplots(figsize=(5, 5))
-im, _ = plot_topomap(roi_mask, SAMPLE_INFO, axes=ax, show=False, cmap="PiYG", vlim=(-1, 1),
-                      sensors=True, contours=0)
-ax.set_title("ROI sanity check\n(green = occipital-parietal, pink = fronto-temporal)")
+mask_b = np.zeros(len(ORIGINAL_CH_NAMES))
+for ch in ROI_CHANNELS["PM"]: mask_b[name_to_idx[ch]] = 1.0
+for ch in ROI_CHANNELS["PAR"]: mask_b[name_to_idx[ch]] = -1.0
+plot_topomap(mask_b, SAMPLE_INFO, axes=axes[1], show=False, cmap="PuOr", vlim=(-1, 1), sensors=True, contours=0)
+axes[1].set_title("PM (orange) vs PAR (purple)")
 plt.tight_layout()
 plt.savefig("roi_sanity_check.png", dpi=150)
 plt.show()
-print("Check roi_sanity_check.png before trusting anything below -- green should be at the back")
-print("of the head, pink should be at the front and sides.")
+print("Check roi_sanity_check.png -- IF should sit frontal/fronto-temporal, TMP posterior-temporal,")
+print("PM central/frontocentral, PAR should span central-parietal through occipito-parietal.")
 
-# Feature extraction: theta/alpha/beta power, relative power, and alpha/beta lateralization, per ROI, per trial. 16 features total.
-
-FEATURE_NAMES = [
-    "OP theta power", "OP alpha power", "OP beta power",
-    "FT theta power", "FT alpha power", "FT beta power",
-    "OP theta rel power", "OP alpha rel power", "OP beta rel power",
-    "FT theta rel power", "FT alpha rel power", "FT beta rel power",
-    "OP alpha lateralization", "OP beta lateralization",
-    "FT alpha lateralization", "FT beta lateralization",
-]
 EPS = 1e-12
+INCLUDE_HJORTH = True
+INCLUDE_CONNECTIVITY = True
+LOG_TRANSFORM_ABS_POWER = True
 
 def compute_band_powers(X, sfreq, freq_bands):
     nperseg = min(256, X.shape[-1])
@@ -159,78 +150,88 @@ def compute_band_powers(X, sfreq, freq_bands):
     out = {}
     for band, (lo, hi) in freq_bands.items():
         mask = (freqs >= lo) & (freqs <= hi)
-        out[band] = np.trapezoid(psd[..., mask], freqs[mask], axis=-1)  # integrate, not just average
+        out[band] = np.trapezoid(psd[..., mask], freqs[mask], axis=-1)
     return out
 
 def region_mean(power_arr, idx_list):
     return power_arr[:, idx_list].mean(axis=1)
 
+def compute_hjorth(X):
+    activity = X.var(axis=-1)
+    dx = np.diff(X, axis=-1)
+    mobility = np.sqrt(dx.var(axis=-1) / (activity + EPS))
+    ddx = np.diff(dx, axis=-1)
+    mobility_dx = np.sqrt(ddx.var(axis=-1) / (dx.var(axis=-1) + EPS))
+    complexity = mobility_dx / (mobility + EPS)
+    return activity, mobility, complexity
+
+def compute_connectivity(X, idx_a, idx_b):
+    sig_a = X[:, idx_a, :].mean(axis=1)
+    sig_b = X[:, idx_b, :].mean(axis=1)
+    sig_a = sig_a - sig_a.mean(axis=-1, keepdims=True)
+    sig_b = sig_b - sig_b.mean(axis=-1, keepdims=True)
+    num = (sig_a * sig_b).sum(axis=-1)
+    den = np.sqrt((sig_a ** 2).sum(axis=-1) * (sig_b ** 2).sum(axis=-1)) + EPS
+    return num / den
+
 def extract_roi_features(X, sfreq):
-    # per-channel, per-band power for every trial in one shot
-    bp = compute_band_powers(X, sfreq, FREQ_BANDS)
+    bands = dict(FREQ_BANDS)
+    bp = compute_band_powers(X, sfreq, bands)
 
-    # raw (absolute) band power, averaged within each ROI as this answers "how much theta/alpha/beta energy is present in this region for this trial
+    features = []
 
-    op_theta = region_mean(bp["theta"], op_idx)   # occipital-parietal theta power
-    op_alpha = region_mean(bp["alpha"], op_idx)   # occipital-parietal alpha power
-    op_beta = region_mean(bp["beta"], op_idx)     # occipital-parietal beta power
-    ft_theta = region_mean(bp["theta"], ft_idx)   # fronto-temporal theta power
-    ft_alpha = region_mean(bp["alpha"], ft_idx)   # fronto-temporal alpha power
-    ft_beta = region_mean(bp["beta"], ft_idx)     # fronto-temporal beta power
+    def add_power_features(label, idx_list, left_idx, right_idx):
+        theta = region_mean(bp["theta"], idx_list)
+        alpha = region_mean(bp["alpha"], idx_list)
+        beta = region_mean(bp["beta"], idx_list)
+        abs_vals = {"theta": theta, "alpha": alpha, "beta": beta}
+        total = theta + alpha + beta + EPS
+        for band, val in abs_vals.items():
+            out_val = np.log(val + EPS) if LOG_TRANSFORM_ABS_POWER else val
+            suffix = " (log)" if LOG_TRANSFORM_ABS_POWER else ""
+            features.append((f"{label} {band} power{suffix}", out_val, idx_list))
+        for band, val in abs_vals.items():
+            features.append((f"{label} {band} rel power", val / total, idx_list))
+        alpha_L, alpha_R = region_mean(bp["alpha"], left_idx), region_mean(bp["alpha"], right_idx)
+        beta_L, beta_R = region_mean(bp["beta"], left_idx), region_mean(bp["beta"], right_idx)
+        features.append((f"{label} alpha lateralization", (alpha_R - alpha_L) / (alpha_R + alpha_L + EPS), idx_list))
+        features.append((f"{label} beta lateralization", (beta_R - beta_L) / (beta_R + beta_L + EPS), idx_list))
 
-    # totals used to normalize absolute power into RELATIVE power
-    # EPS guards against dividing by zero on a bad trial.
-    op_total = op_theta + op_alpha + op_beta + EPS
-    ft_total = ft_theta + ft_alpha + ft_beta + EPS
+    for label in ROI_CHANNELS:
+        add_power_features(label, ROI_IDX[label], ROI_LEFT_IDX[label], ROI_RIGHT_IDX[label])
 
-    #split each ROI's alpha/beta power by hemisphere (left vs right electrodes only), needed for the lateralization features below.
-    op_alpha_L, op_alpha_R = region_mean(bp["alpha"], op_left_idx), region_mean(bp["alpha"], op_right_idx)
-    op_beta_L, op_beta_R = region_mean(bp["beta"], op_left_idx), region_mean(bp["beta"], op_right_idx)
-    ft_alpha_L, ft_alpha_R = region_mean(bp["alpha"], ft_left_idx), region_mean(bp["alpha"], ft_right_idx)
-    ft_beta_L, ft_beta_R = region_mean(bp["beta"], ft_left_idx), region_mean(bp["beta"], ft_right_idx)
+    if INCLUDE_HJORTH:
+        activity, mobility, complexity = compute_hjorth(X)
+        for label in ROI_CHANNELS:
+            idx_list = ROI_IDX[label]
+            features.append((f"{label} Hjorth activity", region_mean(activity, idx_list), idx_list))
+            features.append((f"{label} Hjorth mobility", region_mean(mobility, idx_list), idx_list))
+            features.append((f"{label} Hjorth complexity", region_mean(complexity, idx_list), idx_list))
 
+    if INCLUDE_CONNECTIVITY:
+        conn = compute_connectivity(X, ROI_IDX["IF"], ROI_IDX["TMP"])
+        features.append(("IF-TMP connectivity (Pearson r)", conn, ROI_IDX["IF"] + ROI_IDX["TMP"]))
 
-    X_feat = np.column_stack([
-        #absolute band power (6 features)
-        op_theta, op_alpha, op_beta,           # occipital-parietal: theta, alpha, beta power
-        ft_theta, ft_alpha, ft_beta,           # fronto-temporal: theta, alpha, beta power
-
-        #relative band power (6 features): band power / (theta+alpha+beta) for that ROI
-        op_theta / op_total, op_alpha / op_total, op_beta / op_total,   # OP relative theta/alpha/beta
-        ft_theta / ft_total, ft_alpha / ft_total, ft_beta / ft_total,   # FT relative theta/alpha/beta
-
-        # (4 features): (right - left) / (right + left)
-        # positive = more power on the right side of this ROI, negative = more on the left
-        (op_alpha_R - op_alpha_L) / (op_alpha_R + op_alpha_L + EPS),  # OP alpha lateralization
-        (op_beta_R - op_beta_L) / (op_beta_R + op_beta_L + EPS),      # OP beta lateralization
-        (ft_alpha_R - ft_alpha_L) / (ft_alpha_R + ft_alpha_L + EPS),  # FT alpha lateralization
-        (ft_beta_R - ft_beta_L) / (ft_beta_R + ft_beta_L + EPS),      # FT beta lateralization
-    ])
-    return X_feat
-
-# region each feature's importance should be redistributed onto, for the topomap
-FEATURE_TO_REGION_IDX = [
-    op_idx, op_idx, op_idx,
-    ft_idx, ft_idx, ft_idx,
-    op_idx, op_idx, op_idx,
-    ft_idx, ft_idx, ft_idx,
-    op_idx, op_idx,
-    ft_idx, ft_idx,
-]
+    X_feat = np.column_stack([vals for _, vals, _ in features])
+    feature_names = [name for name, _, _ in features]
+    feature_region_idx = [region for _, _, region in features]
+    return X_feat, feature_names, feature_region_idx
 
 # Within-subject loop: 20 seeds per subject, Linear SVM
-
+FEATURE_NAMES, FEATURE_TO_REGION_IDX = None, None
 subject_test_acc, subject_macro_f1 = {}, {}
 subject_per_class_f1 = {}
 cm_sum_all = np.zeros((4, 4), dtype=int)
-coef_importance_all = []      
-perm_importance_all = []       
+coef_importance_all = []
+perm_importance_all = []
 
 for sub_id in sorted(X_by_subject.keys()):
     X_sub = X_by_subject[sub_id]
     y_sub = y_by_subject[sub_id]
-    X_feat = extract_roi_features(X_sub, TARGET_SFREQ)
-    print(f"\n=== {sub_id} ({X_sub.shape[0]} trials, {N_SEEDS} seeds) ===")
+    X_feat, feat_names, feat_region_idx = extract_roi_features(X_sub, TARGET_SFREQ)
+    if FEATURE_NAMES is None:
+        FEATURE_NAMES, FEATURE_TO_REGION_IDX = feat_names, feat_region_idx
+    print(f"\n=== {sub_id} ({X_sub.shape[0]} trials, {N_SEEDS} seeds, {X_feat.shape[1]} features) ===")
 
     seed_acc, seed_f1_macro, seed_f1_per_class = [], [], []
     cm_sum_sub = np.zeros((4, 4), dtype=int)
@@ -313,7 +314,7 @@ plt.tight_layout()
 plt.savefig("svm_per_subject_accuracy_boxplot.png", dpi=150)
 plt.show()
 
-# Plot 2: pooled confusion matrix 
+# Plot 2: pooled confusion matrix
 cm_norm = cm_sum_all.astype(float) / cm_sum_all.sum(axis=1, keepdims=True)
 fig, ax = plt.subplots(figsize=(5, 5))
 im = ax.imshow(cm_norm, cmap="Blues", vmin=0, vmax=1)
@@ -330,7 +331,7 @@ plt.tight_layout()
 plt.savefig("svm_pooled_confusion_matrix.png", dpi=150)
 plt.show()
 
-# Plot 3: per-class F1 summary 
+# Plot 3: per-class F1 summary
 fig, ax = plt.subplots(figsize=(6, 4))
 means = [per_class_f1_all[:, c].mean() for c in range(4)]
 stds = [per_class_f1_all[:, c].std() for c in range(4)]
@@ -342,7 +343,7 @@ plt.savefig("svm_per_class_f1.png", dpi=150)
 plt.show()
 
 #Plot 4: SVM coefficient importance
-coef_importance_all = np.array(coef_importance_all)  # (n_subjects*n_seeds, 16)
+coef_importance_all = np.array(coef_importance_all)
 coef_mean = coef_importance_all.mean(axis=0)
 coef_std = coef_importance_all.std(axis=0)
 order = np.argsort(coef_mean)[::-1]
@@ -357,7 +358,7 @@ plt.savefig("svm_coefficient_importance.png", dpi=150)
 plt.show()
 
 # Plot 5: permutation importance
-perm_importance_all = np.array(perm_importance_all)  # (n_subjects, 16), from seed=0 val sets
+perm_importance_all = np.array(perm_importance_all)
 perm_mean = perm_importance_all.mean(axis=0)
 perm_std = perm_importance_all.std(axis=0)
 order_perm = np.argsort(perm_mean)[::-1]
@@ -371,7 +372,7 @@ plt.tight_layout()
 plt.savefig("svm_permutation_importance.png", dpi=150)
 plt.show()
 
-#Plot 6: aggregated importance mapped back onto the scalp 
+#Plot 6: aggregated importance mapped back onto the scalp
 def feature_importance_to_topomap(importance_per_feature):
     chan_importance = np.zeros(len(ORIGINAL_CH_NAMES))
     for feat_i, imp in enumerate(importance_per_feature):
@@ -380,7 +381,6 @@ def feature_importance_to_topomap(importance_per_feature):
             chan_importance[orig_i] += imp / len(idx_list)
     return chan_importance
 
-# combine coefficient and permutation importance (each min-max normalized first so they're comparable)
 def normalize01(v):
     v = np.asarray(v, dtype=float)
     return (v - v.min()) / (v.max() - v.min() + EPS)
@@ -396,4 +396,3 @@ plt.colorbar(im, ax=ax, fraction=0.046)
 plt.tight_layout()
 plt.savefig("svm_importance_topomap.png", dpi=150)
 plt.show()
-
