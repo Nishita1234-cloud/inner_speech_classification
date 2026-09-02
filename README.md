@@ -62,7 +62,7 @@ Setup: 20 repeated random 80/10/10 splits per subject, 4-class balanced accuracy
 | Pooled across all 200 subject-seed runs | 0.267 ± 0.096 |
 | Average within-subject std across seeds | 0.091 (how much a single split's number moves around) |
 
-![EEGNet per-subject accuracy box plot](images/eegnet_per_subject_accuracy_boxplot.png)
+![EEGNet Per Subject Accuracy](eegNet_boxplot.png)
 
 ### CNN-LSTM — Within-Subject Results
 
@@ -89,19 +89,20 @@ Setup: 20 repeated random 80/10/10 splits per subject, 4-class balanced accuracy
 | Pooled across all 200 subject-seed runs | 0.262 ± 0.088 |
 | Average within-subject std across seeds | 0.083 (how much a single split's number moves around) |
 
+![CNNLSTM Per Subject Accuracy](cnn_lstm_boxplot.png)
+
+
 ### Spatial filter interpretability
 
 To check what each deep model actually learned, the spatial filter weights of a representative model (sub-01, seed 0) were plotted back onto the scalp.
 
 <p float="left">
-  <img src="cnn_lstm_topoMap.png" width="45%" alt="CNN-LSTM mean absolute spatial weight across all filters for sub-01, seed 0, showing a peak near left temporal electrodes" />
-  <img src="eegNet_topoMap.png" width="45%" alt="EEGNet mean absolute spatial weight across all filters for sub-01, seed 0, showing weight spread fairly evenly across the scalp" />
+  <img src="cnn_lstm_topMap.png" width="45%" alt="CNN-LSTM mean absolute spatial weight across all filters for sub-01, seed 0, showing a peak near left temporal electrodes" />
+  <img src="eegNet_topMap.png" width="45%" alt="EEGNet mean absolute spatial weight across all filters for sub-01, seed 0, showing weight spread fairly evenly across the scalp" />
 </p>
 
 *Left: CNN-LSTM. Right: EEGNet. Both show the mean absolute spatial filter weight per electrode, averaged across all filters, viewed from above with the nose pointing up.*
 
-![CNNLSTM Per Subject Accuracy](cnn_lstm_boxplot.png)
-![EEGNet Per Subject Accuracy](eegNet_boxplot.png)
 
 ### Classical ML (SVM)
 
